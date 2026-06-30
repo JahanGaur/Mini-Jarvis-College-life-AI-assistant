@@ -1,5 +1,5 @@
-import { useState } from "react";
 import "./JarvisChat.css";
+import { useEffect, useState } from "react";
 
 const suggestions = [
   "Summarise Chapter 7 for me",
@@ -17,19 +17,102 @@ const initialMessages = [
 ];
 
 export default function JarvisChat() {
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
 
-  const send = (text) => {
-    const msg = text || input.trim();
-    if (!msg) return;
+  const loadHistory = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/chat/history");
+
+      const history = await response.json();
+
+      if (history.length === 0) {
+        setMessages([
+          {
+            role: "jarvis",
+            text: "Hello Jahan. I'm Jarvis — your AI study assistant.",
+            time: new Date().toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          },
+        ]);
+        return;
+      }
+
+      setMessages(
+        history.map((msg) => ({
+          role: msg.role === "assistant" ? "jarvis" : "user",
+          text: msg.content,
+          time: new Date(msg.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }))
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+      loadHistory();
+  }, []);
+
+  const send = async (text) => {
+  const msg = text || input.trim();
+  if (!msg) return;
+  setInput("");
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "user",
+      text: msg,
+      time: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    },
+  ]);
+
+  try {
+    const response = await fetch("http://localhost:5000/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: msg,
+      }),
+    });
+
+    const data = await response.json();
+
     setMessages((prev) => [
       ...prev,
-      { role: "user", text: msg, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
-      { role: "jarvis", text: "[ Jarvis AI response will appear here once the backend is connected. ]", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), pending: true },
+      {
+        role: "jarvis",
+        text: data.reply,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
     ]);
-    setInput("");
-  };
+  } catch (err) {
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "jarvis",
+        text: "Unable to reach the backend.",
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+  }
+};
 
   return (
     <div className="chat-page">
